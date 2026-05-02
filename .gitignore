@@ -1,0 +1,113 @@
+# ======================
+# Simulation Outputs
+# ======================
+*.vcd
+*.lxt
+*.lxt2
+*.fst
+*.ghw
+*.dump
+
+# Compiled simulation binaries
+*.vvp
+*.out
+a.out
+
+# ======================
+# Synthesis Outputs
+# ======================
+*.bit
+*.bin
+*.mcs
+*.xsvf
+
+# Netlist / synthesis intermediates
+*.edif
+*.edf
+*.ngc
+*.ngd
+*.ncd
+*.pcf
+
+# ======================
+# Xilinx Vivado
+# ======================
+*.xpr
+*.xsa
+.Xil/
+vivado*.jou
+vivado*.log
+vivado_*.str
+webtalk*.jou
+webtalk*.log
+project_1/
+
+# ======================
+# Xilinx ISE
+# ======================
+*.xise
+*.gise
+*.bgn
+*.bld
+*.drc
+*.mrp
+*.map
+*.par
+*.twr
+*.twx
+*.unroutes
+iseconfig/
+xlnx_auto_0_xdb/
+xst/
+_ngo/
+
+# ======================
+# Intel Quartus
+# ======================
+*.qpf
+*.qsf
+*.qdf
+db/
+incremental_db/
+output_files/
+simulation/
+*.rpt
+*.smsg
+*.sof
+*.pof
+*.jdi
+
+# ======================
+# ModelSim / QuestaSim
+# ======================
+work/
+transcript
+vsim.wlf
+*.wlf
+modelsim.ini
+
+# ======================
+# Synopsys / Cadence
+# ======================
+*.syn
+*.mr
+*.pvl
+*.syn
+csrc/
+simv
+simv.daidir/
+ucli.key
+DVEfiles/
+
+# ======================
+# Editor / OS Junk
+# ======================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
