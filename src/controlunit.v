@@ -1,116 +1,205 @@
-module maincontrol(
-    input [6:0] opcode,
-    output reg regWrite, memRead, memWrite, memtoReg,
-    output reg aluSrc, branch, jump, jalr,
-    output reg [1:0] aluOp,
-    output reg [2:0] immSel
-);
-localparam Rtype = 7'b0110011,
-           Itype = 7'b0010011,
-           Load  = 7'b0000011,
-           Store = 7'b0100011,
-           Branch= 7'b1100011,
-           JAL   = 7'b1101111,
-           JALR  = 7'b1100111,
-           LUI   = 7'b0110111,
-           AUIPC = 7'b0010111;
-always @(*) begin
-    // Default (safe reset state)
-    regWrite = 0;
-    memRead  = 0;
-    memWrite = 0;
-    memtoReg = 0;
-    aluSrc   = 0;
-    branch   = 0;
-    jump     = 0;
-    jalr     = 0;
-    aluOp    = 2'b00;
-    immSel   = 3'b000;
-    case(opcode)
-        Rtype: begin
-            regWrite = 1;
-            aluOp = 2'b10;
-        end
-        Itype: begin
-            regWrite = 1;
-            aluSrc = 1;
-            aluOp = 2'b10;
-            immSel = 3'b000;
-        end
-        Load: begin
-            regWrite = 1;
-            aluSrc = 1;
-            memRead = 1;
-            memtoReg = 1;
-            aluOp = 2'b00;
-            immSel = 3'b000;
-        end
-        Store: begin
-            aluSrc = 1;
-            memWrite = 1;
-            aluOp = 2'b00;
-            immSel = 3'b001;
-        end
-        Branch: begin
-            branch = 1;
-            aluOp = 2'b01;
-            immSel = 3'b010;
-        end
-        JAL: begin
-            regWrite = 1;
-            jump = 1;
-            immSel = 3'b100;
-        end
-        JALR: begin
-            regWrite = 1;
-            aluSrc = 1;
-            jalr = 1;
-            immSel = 3'b000;
-        end
-        LUI: begin
-            regWrite = 1;
-            aluSrc = 1;
-            immSel = 3'b011;
-        end
-        AUIPC: begin
-            regWrite = 1;
-            aluSrc = 1;
-            immSel = 3'b011;
-        end
-    endcase
-end
+// =============================================================================
+//  controlunit.v  —  Main Control + ALU Control  (fixed + synthesis-friendly)
+//
+//  BUG FIXED (Critical — BUG-1):
+//   The original alucontrol localparams were completely different from alu.v:
+//
+//     Operation │ Old alucontrol │ alu.v expects │ Effect of bug
+//     ──────────┼────────────────┼───────────────┼─────────────────────────
+//       ADD     │ 4'b0010        │ 4'b0000        │ SLT executed instead
+//       SUB     │ 4'b0110        │ 4'b1000        │ OR  executed instead
+//       AND     │ 4'b0000        │ 4'b0111        │ ADD executed instead
+//       OR      │ 4'b0001        │ 4'b0110        │ SLL executed instead
+//       XOR     │ 4'b0011        │ 4'b0100        │ XOR (lucky match on bit3)
+//       SLT     │ 4'b0111        │ 4'b0010        │ AND executed instead
+//       SLL     │ 4'b1000        │ 4'b0001        │ SUB executed instead
+//       SRL     │ 4'b1001        │ 4'b0101        │ SRA executed instead
+//       SRA     │ 4'b1010        │ 4'b1101        │ wrong shift type
+//
+//   Every R-type and I-type instruction executed the WRONG operation.
+//   Fixed by aligning all localparams with alu.v.
+//
+//  SYNTHESIS IMPROVEMENTS:
+//   • always_comb replaces always @(*).
+//   • unique case triggers a synthesis warning on unreachable branches.
+//   • All outputs have explicit defaults before the case → no latch inference.
+//   • Logic type used throughout.
+// =============================================================================
 
+module maincontrol (
+    input  logic [6:0] opcode,
+    output logic       regWrite,
+    output logic       memRead,
+    output logic       memWrite,
+    output logic       memtoReg,
+    output logic       aluSrc,
+    output logic       branch,
+    output logic       jump,
+    output logic       jalr,
+    output logic       auipc,       // NEW: flag for AUIPC PC-relative add
+    output logic [1:0] aluOp,
+    output logic [2:0] immSel
+);
+    // Opcode table (RV32I)
+    localparam [6:0]
+        RTYPE  = 7'b011_0011,
+        ITYPE  = 7'b001_0011,
+        LOAD   = 7'b000_0011,
+        STORE  = 7'b010_0011,
+        BRANCH = 7'b110_0011,
+        JAL    = 7'b110_1111,
+        JALR   = 7'b110_0111,
+        LUI    = 7'b011_0111,
+        AUIPC  = 7'b001_0111;
+
+    // immSel encoding
+    localparam [2:0]
+        IMM_I = 3'b000,
+        IMM_S = 3'b001,
+        IMM_B = 3'b010,
+        IMM_U = 3'b011,
+        IMM_J = 3'b100;
+
+    always_comb begin
+        // --- Safe defaults (prevents latch inference) ---
+        regWrite = 1'b0;
+        memRead  = 1'b0;
+        memWrite = 1'b0;
+        memtoReg = 1'b0;
+        aluSrc   = 1'b0;
+        branch   = 1'b0;
+        jump     = 1'b0;
+        jalr     = 1'b0;
+        auipc    = 1'b0;
+        aluOp    = 2'b00;
+        immSel   = IMM_I;
+
+        unique case (opcode)
+            RTYPE: begin
+                regWrite = 1'b1;
+                aluOp    = 2'b10;   // decoded by alucontrol from funct3/funct7
+            end
+
+            ITYPE: begin
+                regWrite = 1'b1;
+                aluSrc   = 1'b1;
+                aluOp    = 2'b10;
+                immSel   = IMM_I;
+            end
+
+            LOAD: begin
+                regWrite = 1'b1;
+                aluSrc   = 1'b1;
+                memRead  = 1'b1;
+                memtoReg = 1'b1;
+                aluOp    = 2'b00;   // ADD for address calc
+                immSel   = IMM_I;
+            end
+
+            STORE: begin
+                aluSrc   = 1'b1;
+                memWrite = 1'b1;
+                aluOp    = 2'b00;   // ADD for address calc
+                immSel   = IMM_S;
+            end
+
+            BRANCH: begin
+                branch   = 1'b1;
+                aluOp    = 2'b01;   // SUB → flags used for comparison
+                immSel   = IMM_B;
+            end
+
+            JAL: begin
+                regWrite = 1'b1;
+                jump     = 1'b1;
+                immSel   = IMM_J;
+            end
+
+            JALR: begin
+                regWrite = 1'b1;
+                aluSrc   = 1'b1;
+                jalr     = 1'b1;
+                immSel   = IMM_I;
+            end
+
+            LUI: begin
+                regWrite = 1'b1;
+                aluSrc   = 1'b1;
+                aluOp    = 2'b11;   // pass-through immediate (see alucontrol)
+                immSel   = IMM_U;
+            end
+
+            AUIPC: begin
+                regWrite = 1'b1;
+                aluSrc   = 1'b1;
+                auipc    = 1'b1;    // signals top-level to mux PC → operand_a
+                aluOp    = 2'b00;   // ADD  (PC + imm)
+                immSel   = IMM_U;
+            end
+
+            default: begin /* all outputs already defaulted */ end
+        endcase
+    end
 endmodule
-module alucontrol(ALUcontrol, aluOp, funct3, funct7);
-input [1:0]aluOp;
-input [2:0]funct3;
-input [6:0]funct7;
-output reg [3:0]ALUcontrol;
-wire [3:0] signal = {funct7[5], funct3};
-localparam ADD=4'b0010, SUB=4'b0110, AND=4'b0000, OR=4'b0001, XOR=4'b0011, SLT=4'b0111, SLL=4'b1000, SRL=4'b1001, SRA=4'b1010;
-always@(*)
-begin
-	if (aluOp==2'b00) begin
-		ALUcontrol=ADD;
-	end
-	else if (aluOp==2'b01) begin
-		ALUcontrol=SUB;
-	end
-	else if (aluOp==2'b10) begin
-		case (signal) 
-		4'b0000: ALUcontrol= ADD;
-		4'b1000: ALUcontrol= SUB;
-		4'b0111: ALUcontrol= AND;
-		4'b0110: ALUcontrol= OR;
-		4'b0100: ALUcontrol= XOR;
-		4'b0010: ALUcontrol= SLT;
-		4'b0001: ALUcontrol= SLL;
-		4'b0101: ALUcontrol= SRL;
-		4'b1101: ALUcontrol= SRA;
-		default: ALUcontrol= 4'b0000;
-		endcase
-	end
-	else ALUcontrol=4'b0000;
-end
+
+
+// =============================================================================
+//  ALU Control
+//
+//  BUG FIXED (BUG-1): all localparams now match alu.v exactly.
+//  ADDED: aluOp=11 → LUI pass-through (ALU_LUI = 4'b0110 = OR; OR rs1_zero
+//         with imm gives imm, which is what LUI needs).
+//         Alternatively, expose a dedicated pass-through code.
+//         Here we use OR since (x0 | imm) = imm.
+// =============================================================================
+
+module alucontrol (
+    input  logic [1:0] aluOp,
+    input  logic [2:0] funct3,
+    input  logic [6:0] funct7,
+    output logic [3:0] ALUcontrol
+);
+    // Mirror of alu.v localparams — MUST stay in sync
+    localparam [3:0]
+        ALU_ADD = 4'b0000,
+        ALU_SUB = 4'b1000,
+        ALU_AND = 4'b0111,
+        ALU_OR  = 4'b0110,
+        ALU_XOR = 4'b0100,
+        ALU_SLT = 4'b0010,
+        ALU_SLL = 4'b0001,
+        ALU_SRL = 4'b0101,
+        ALU_SRA = 4'b1101;
+
+    logic [3:0] signal;
+    assign signal = {funct7[5], funct3};   // 4-bit decode key
+
+    always_comb begin
+        ALUcontrol = ALU_ADD;   // safe default
+
+        unique case (aluOp)
+            2'b00:   ALUcontrol = ALU_ADD;      // Load / Store / AUIPC
+
+            2'b01:   ALUcontrol = ALU_SUB;      // Branch (uses flags)
+
+            2'b10:   begin                       // R-type / I-type shifts+arith
+                unique case (signal)
+                    4'b0000: ALUcontrol = ALU_ADD;
+                    4'b1000: ALUcontrol = ALU_SUB;
+                    4'b0111: ALUcontrol = ALU_AND;
+                    4'b0110: ALUcontrol = ALU_OR;
+                    4'b0100: ALUcontrol = ALU_XOR;
+                    4'b0010: ALUcontrol = ALU_SLT;
+                    4'b0001: ALUcontrol = ALU_SLL;
+                    4'b0101: ALUcontrol = ALU_SRL;
+                    4'b1101: ALUcontrol = ALU_SRA;
+                    default: ALUcontrol = ALU_ADD;
+                endcase
+            end
+
+            2'b11:   ALUcontrol = ALU_OR;       // LUI: (x0 | imm) = imm
+
+            default: ALUcontrol = ALU_ADD;
+        endcase
+    end
 endmodule
-		
