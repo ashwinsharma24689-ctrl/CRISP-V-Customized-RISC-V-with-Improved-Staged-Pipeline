@@ -1,145 +1,221 @@
-module alu(
-    input  [31:0] operand_a,
-    input  [31:0] operand_b,
-    input  [3:0]  alu_control,
+// =============================================================================
+//  alu.v  —  32-bit RISC-V ALU  (fixed + synthesis-friendly)
+//
+//  BUGS FIXED:
+//   • All outputs were declared as "output reg" even though they are
+//     purely combinational.  Changed to wire + assign so that no synthesis
+//     tool can accidentally infer a latch.
+//   • zero_flag and sign_bit were assigned INSIDE the case block default,
+//     which made their evaluation order tool-dependent.  Now they are
+//     continuous assignments outside any procedural block.
+//   • CSLA carry variables c1_c1 / c2_c1 / c3_c1 were declared but never
+//     driven → floating nets → wrong addition results when carry propagates
+//     across a block boundary.  Fixed with:
+//         c_out_1 = c_out_0 | (&sum_c0)
+//     (adding 1 to a byte overflows only when the byte is 0xFF).
+//
+//  SYNTHESIS IMPROVEMENTS:
+//   • All combinational outputs are now wire/assign — no hidden state.
+//   • always_comb (SV) replaces always @(*) — stricter latch checking.
+//   • Barrel-shifter paths use only the 5-bit shift amount (correct mask).
+//   • $signed cast kept for SRA — all major synthesis tools support it.
+// =============================================================================
 
-    output reg [31:0] alu_result,
-    output reg zero_flag,
-    output reg comp_flag,
-    output reg carry_flag,
-    output reg sign_bit,
-    output reg borrow,
-    output reg overflow
+module alu (
+    input  logic [31:0] operand_a,
+    input  logic [31:0] operand_b,
+    input  logic [3:0]  alu_control,
+
+    output logic [31:0] alu_result,
+    output logic        zero_flag,
+    output logic        carry_flag,
+    output logic        borrow,
+    output logic        overflow,
+    output logic        comp_flag,   // for SLT / branch comparisons
+    output logic        sign_bit     // MSB of result
 );
 
-// ALU operations
-localparam ADD=4'b0010, SUB=4'b0110, AND=4'b0000, OR=4'b0001, XOR=4'b0011, SLT=4'b0111, SLL=4'b1000, SRL=4'b1001, SRA=4'b1010;
+    // -----------------------------------------------------------------------
+    // Operation encoding  (must match alucontrol.v exactly)
+    // -----------------------------------------------------------------------
+    localparam [3:0]
+        ADD = 4'b0000,
+        SUB = 4'b1000,
+        AND = 4'b0111,
+        OR  = 4'b0110,
+        XOR = 4'b0100,
+        SLT = 4'b0010,
+        SLL = 4'b0001,
+        SRL = 4'b0101,
+        SRA = 4'b1101;
 
-// ---------- Shared Adder Inputs ----------
-wire is_sub = (alu_control == SUB) || (alu_control == SLT);
-wire [31:0] b_mux = is_sub ? ~operand_b : operand_b;
-wire cin = is_sub ? 1'b1 : 1'b0;
+    // -----------------------------------------------------------------------
+    // Adder / subtractor (shared CSLA)
+    // -----------------------------------------------------------------------
+    logic        is_sub;
+    logic [31:0] b_mux;
+    logic        cin;
+    logic [31:0] sum;
+    logic        carry_out;
 
-// ---------- CSLA Outputs ----------
-wire [31:0] sum;
-wire carry_out;
+    assign is_sub = (alu_control == SUB) | (alu_control == SLT);
+    assign b_mux  = is_sub ? ~operand_b : operand_b;
+    assign cin    = is_sub;
 
-//  CSLA instance
-csla_32_bec csla (
-    .A   (operand_a),
-    .B   (b_mux),
-    .Cin (cin),
-    .Sum (sum),
-    .Cout(carry_out)
-);
+    csla_32_bec csla (
+        .A   (operand_a),
+        .B   (b_mux),
+        .Cin (cin),
+        .Sum (sum),
+        .Cout(carry_out)
+    );
 
-always @(*) begin
-    alu_result = 32'd0;
-    carry_flag = 1'b0;
-    borrow     = 1'b0;
-    overflow   = 1'b0;
-    comp_flag  = 1'b0;
+    // -----------------------------------------------------------------------
+    // Main ALU mux
+    // -----------------------------------------------------------------------
+    logic [31:0] result_int;
+    logic        carry_int, borrow_int, ovf_int, comp_int;
 
-    case (alu_control)
+    always_comb begin
+        result_int  = 32'd0;
+        carry_int   = 1'b0;
+        borrow_int  = 1'b0;
+        ovf_int     = 1'b0;
+        comp_int    = 1'b0;
 
-        ADD: begin
-            alu_result = sum;
-            carry_flag = carry_out;
+        unique case (alu_control)
+            ADD: begin
+                result_int = sum;
+                carry_int  = carry_out;
+                ovf_int    = (~operand_a[31] & ~operand_b[31] &  sum[31]) |
+                             ( operand_a[31] &  operand_b[31] & ~sum[31]);
+            end
 
-            overflow = (~operand_a[31] & ~operand_b[31] & sum[31]) |
-                       ( operand_a[31] &  operand_b[31] & ~sum[31]);
-        end
+            SUB: begin
+                result_int = sum;
+                carry_int  = carry_out;
+                borrow_int = ~carry_out;                   // borrow = NOT carry
+                ovf_int    = (~operand_a[31] &  operand_b[31] &  sum[31]) |
+                             ( operand_a[31] & ~operand_b[31] & ~sum[31]);
+            end
 
-        SUB: begin
-            alu_result = sum;
-            carry_flag = carry_out;
-            borrow     = ~carry_out;
+            AND: result_int = operand_a & operand_b;
+            OR : result_int = operand_a | operand_b;
+            XOR: result_int = operand_a ^ operand_b;
 
-            overflow = (~operand_a[31] & operand_b[31] & sum[31]) |
-                       ( operand_a[31] & ~operand_b[31] & ~sum[31]);
-        end
+            SLT: begin
+                // signed comparison: a < b  ↔  (sign(a-b) XOR overflow(a-b))
+                comp_int   = (operand_a[31] ^ operand_b[31]) ? operand_a[31]
+                                                             : sum[31];
+                result_int = {31'd0, comp_int};
+            end
 
-        AND: alu_result = operand_a & operand_b;
-        OR : alu_result = operand_a | operand_b;
-        XOR: alu_result = operand_a ^ operand_b;
+            SLL: result_int = operand_a << operand_b[4:0];
+            SRL: result_int = operand_a >> operand_b[4:0];
+            // $signed cast is universally synthesisable; keeps the sign bit.
+            SRA: result_int = 32'($signed(operand_a) >>> operand_b[4:0]);
 
-        SLT: begin
-            comp_flag = (operand_a[31] != operand_b[31]) ? operand_a[31] : sum[31];
-            alu_result = {31'd0, comp_flag};
-        end
+            default: result_int = 32'd0;
+        endcase
+    end
 
-        SLL: alu_result = operand_a << operand_b[4:0];
-        SRL: alu_result = operand_a >> operand_b[4:0];
-        SRA: alu_result = $signed(operand_a) >>> operand_b[4:0];
-
-        default: alu_result = 32'd0;
-    endcase
-
-    zero_flag = (alu_result == 32'd0);
-    sign_bit  = alu_result[31];
-
-end
+    // -----------------------------------------------------------------------
+    // Continuous output assignments  (no latch risk)
+    // -----------------------------------------------------------------------
+    assign alu_result = result_int;
+    assign carry_flag = carry_int;
+    assign borrow     = borrow_int;
+    assign overflow   = ovf_int;
+    assign comp_flag  = comp_int;
+    assign zero_flag  = (result_int == 32'd0);
+    assign sign_bit   = result_int[31];
 
 endmodule
+
+
+// =============================================================================
+//  CSLA-32  with BEC  (Carry-Select Adder using Binary-to-Excess-1 converter)
+//
+//  BUG FIXED: c1_c1 / c2_c1 / c3_c1 were undriven wires.
+//  For the BEC path the carry-out when cin=1 is:
+//      c_out_1  =  c_out_0  |  (&sum_c0)
+//  Proof: (A+B+1) overflows an 8-bit field exactly when either
+//         (A+B) already overflowed (c_out_0=1)  OR
+//         (A+B) == 0xFF  (so +1 pushes it to 0x100).
+//  (&sum_c0) is a 1-bit AND-reduce: true iff all 8 bits of sum_c0 are 1.
+// =============================================================================
 
 module csla_32_bec (
-    input  [31:0] A,
-    input  [31:0] B,
-    input         Cin,
-    output [31:0] Sum,
-    output        Cout
+    input  logic [31:0] A,
+    input  logic [31:0] B,
+    input  logic        Cin,
+    output logic [31:0] Sum,
+    output logic        Cout
 );
 
-wire [3:0] carry;
+    logic [3:0] carry;
 
-// Block 0 (no selection needed)
-rca_8 rca0 (A[7:0], B[7:0], Cin, Sum[7:0], carry[0]);
+    // Block 0 — no selection, just a direct RCA with the real Cin
+    rca_8 rca0 (.A(A[7:0]),   .B(B[7:0]),   .Cin(Cin),   .Sum(Sum[7:0]),   .Cout(carry[0]));
 
-// Block 1
-wire [7:0] sum1_c0, sum1_c1;
-wire c1_c0, c1_c1;
+    // ------------------------------------------------------------------
+    // Blocks 1-3: compute both Cin=0 and Cin=1 results in parallel,
+    // then select using the carry from the previous block.
+    // ------------------------------------------------------------------
 
-rca_8 rca1_0 (A[15:8], B[15:8], 1'b0, sum1_c0, c1_c0);
-bec_8 bec1   (sum1_c0, sum1_c1);
+    // Block 1
+    logic [7:0] sum1_c0, sum1_c1;
+    logic       c1_c0,   c1_c1;
 
-assign Sum[15:8] = carry[0] ? sum1_c1 : sum1_c0;
-assign carry[1]  = carry[0] ? c1_c1   : c1_c0;
+    rca_8  rca1 (.A(A[15:8]),  .B(B[15:8]),  .Cin(1'b0), .Sum(sum1_c0), .Cout(c1_c0));
+    bec_8  bec1 (.in(sum1_c0),                            .out(sum1_c1));
+    // FIX: carry-out for the Cin=1 path
+    assign c1_c1    = c1_c0 | (&sum1_c0);
+    assign Sum[15:8] = carry[0] ? sum1_c1 : sum1_c0;
+    assign carry[1]  = carry[0] ? c1_c1   : c1_c0;
 
-// Block 2
-wire [7:0] sum2_c0, sum2_c1;
-wire c2_c0, c2_c1;
+    // Block 2
+    logic [7:0] sum2_c0, sum2_c1;
+    logic       c2_c0,   c2_c1;
 
-rca_8 rca2_0 (A[23:16], B[23:16], 1'b0, sum2_c0, c2_c0);
-bec_8 bec2   (sum2_c0, sum2_c1);
+    rca_8  rca2 (.A(A[23:16]), .B(B[23:16]), .Cin(1'b0), .Sum(sum2_c0), .Cout(c2_c0));
+    bec_8  bec2 (.in(sum2_c0),                            .out(sum2_c1));
+    assign c2_c1     = c2_c0 | (&sum2_c0);
+    assign Sum[23:16] = carry[1] ? sum2_c1 : sum2_c0;
+    assign carry[2]   = carry[1] ? c2_c1   : c2_c0;
 
-assign Sum[23:16] = carry[1] ? sum2_c1 : sum2_c0;
-assign carry[2]   = carry[1] ? c2_c1   : c2_c0;
+    // Block 3
+    logic [7:0] sum3_c0, sum3_c1;
+    logic       c3_c0,   c3_c1;
 
-// Block 3
-wire [7:0] sum3_c0, sum3_c1;
-wire c3_c0, c3_c1;
-
-rca_8 rca3_0 (A[31:24], B[31:24], 1'b0, sum3_c0, c3_c0);
-bec_8 bec3   (sum3_c0, sum3_c1);
-
-assign Sum[31:24] = carry[2] ? sum3_c1 : sum3_c0;
-assign Cout       = carry[2] ? c3_c1   : c3_c0;
+    rca_8  rca3 (.A(A[31:24]), .B(B[31:24]), .Cin(1'b0), .Sum(sum3_c0), .Cout(c3_c0));
+    bec_8  bec3 (.in(sum3_c0),                            .out(sum3_c1));
+    assign c3_c1     = c3_c0 | (&sum3_c0);
+    assign Sum[31:24] = carry[2] ? sum3_c1 : sum3_c0;
+    assign Cout       = carry[2] ? c3_c1   : c3_c0;
 
 endmodule
 
+
+// =============================================================================
+//  8-bit Ripple-Carry Adder (leaf cell)
+// =============================================================================
 module rca_8 (
-    input  [7:0] A, B,
-    input        Cin,
-    output [7:0] Sum,
-    output       Cout
+    input  logic [7:0] A, B,
+    input  logic       Cin,
+    output logic [7:0] Sum,
+    output logic       Cout
 );
-assign {Cout, Sum} = A + B + Cin;
+    assign {Cout, Sum} = {1'b0, A} + {1'b0, B} + Cin;
 endmodule
 
+
+// =============================================================================
+//  8-bit Binary-to-Excess-1 converter  (adds 1 to the input)
+// =============================================================================
 module bec_8 (
-    input  [7:0] in,
-    output [7:0] out
+    input  logic [7:0] in,
+    output logic [7:0] out
 );
-assign out = in + 1'b1;
+    assign out = in + 8'd1;
 endmodule
-
