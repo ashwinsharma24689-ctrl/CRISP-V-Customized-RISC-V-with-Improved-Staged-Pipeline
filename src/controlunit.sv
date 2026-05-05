@@ -1,30 +1,5 @@
-// =============================================================================
-//  controlunit.v  —  Main Control + ALU Control  (fixed + synthesis-friendly)
-//
-//  BUG FIXED (Critical — BUG-1):
-//   The original alucontrol localparams were completely different from alu.v:
-//
-//     Operation │ Old alucontrol │ alu.v expects │ Effect of bug
-//     ──────────┼────────────────┼───────────────┼─────────────────────────
-//       ADD     │ 4'b0010        │ 4'b0000        │ SLT executed instead
-//       SUB     │ 4'b0110        │ 4'b1000        │ OR  executed instead
-//       AND     │ 4'b0000        │ 4'b0111        │ ADD executed instead
-//       OR      │ 4'b0001        │ 4'b0110        │ SLL executed instead
-//       XOR     │ 4'b0011        │ 4'b0100        │ XOR (lucky match on bit3)
-//       SLT     │ 4'b0111        │ 4'b0010        │ AND executed instead
-//       SLL     │ 4'b1000        │ 4'b0001        │ SUB executed instead
-//       SRL     │ 4'b1001        │ 4'b0101        │ SRA executed instead
-//       SRA     │ 4'b1010        │ 4'b1101        │ wrong shift type
-//
-//   Every R-type and I-type instruction executed the WRONG operation.
-//   Fixed by aligning all localparams with alu.v.
-//
-//  SYNTHESIS IMPROVEMENTS:
-//   • always_comb replaces always @(*).
-//   • unique case triggers a synthesis warning on unreachable branches.
-//   • All outputs have explicit defaults before the case → no latch inference.
-//   • Logic type used throughout.
-// =============================================================================
+
+//   MAIN CONTROL UNIT
 
 module maincontrol (
     input  logic [6:0] opcode,
@@ -143,15 +118,7 @@ module maincontrol (
 endmodule
 
 
-// =============================================================================
 //  ALU Control
-//
-//  BUG FIXED (BUG-1): all localparams now match alu.v exactly.
-//  ADDED: aluOp=11 → LUI pass-through (ALU_LUI = 4'b0110 = OR; OR rs1_zero
-//         with imm gives imm, which is what LUI needs).
-//         Alternatively, expose a dedicated pass-through code.
-//         Here we use OR since (x0 | imm) = imm.
-// =============================================================================
 
 module alucontrol (
     input  logic [1:0] aluOp,
