@@ -1,4 +1,3 @@
-
 module alu (
     input  [31:0] operand_a,
     input  [31:0] operand_b,
@@ -19,6 +18,7 @@ localparam ADD = 4'b0000,   // funct7[5]=0, funct3=000
            OR  = 4'b0110,   // funct7[5]=0, funct3=110
            XOR = 4'b0100,   // funct7[5]=0, funct3=100
            SLT = 4'b0010,   // funct7[5]=0, funct3=010
+           SLTU= 4'b0011,   // funct7[5]=0, funct3=011  (C2 fix)
            SLL = 4'b0001,   // funct7[5]=0, funct3=001
            SRL = 4'b0101,   // funct7[5]=0, funct3=101
            SRA = 4'b1101;   // funct7[5]=1, funct3=101
@@ -79,6 +79,13 @@ always @(*) begin
             comp_flag  = (operand_a[31] != operand_b[31])
                              ? operand_a[31]   // different signs: negative < positive
                              : sum[31];        // same sign: check subtraction MSB
+            alu_result = {31'd0, comp_flag};
+        end
+
+        SLTU: begin
+            // Unsigned less-than: result is 1 when A <u B  (C2 fix)
+            // borrow = ~carry_out from A - B; borrow=1 means A < B unsigned
+            comp_flag  = ~carry_out;           // borrow signal from subtractor
             alu_result = {31'd0, comp_flag};
         end
 
