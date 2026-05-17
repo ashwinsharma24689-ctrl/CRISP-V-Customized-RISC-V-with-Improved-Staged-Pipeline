@@ -1,4 +1,3 @@
-
 module cpu (
     input clk,
     input reset
@@ -182,6 +181,7 @@ datamemory DMEM (
     .clk      (clk),
     .memRead  (memRead),
     .memWrite (memWrite),
+    .funct3   (funct3),      // C3 fix: byte/halfword width select
     .address  (alu_result),
     .writeData(rs2_data),
     .readData (read_data)
