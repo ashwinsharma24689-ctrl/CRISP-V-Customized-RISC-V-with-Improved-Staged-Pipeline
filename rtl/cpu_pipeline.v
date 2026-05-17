@@ -396,10 +396,8 @@ assign ex_redirect_target = id_ex_jalr ? (ex_alu_result & ~32'b1) : ex_pc_imm;
 assign ex_redirect = ex_branch_taken | id_ex_jump | id_ex_jalr;
 
 // ??? EX/MEM pipeline register ???????????????????????????????????????
-// EX/MEM always advances (no stall or flush needed here:
-//  - on load-use stall, the bubble in ID/EX propagates naturally)
-//  - on ex_redirect, the two flushed stages (IF/ID, ID/EX) become NOPs
-//    which produce no side effects as they pass through EX/MEM and MEM/WB)
+// F1 fix: also gate on pwr_stall_req so all five stage registers freeze
+// together — prevents state corruption when an external stall is injected.
 always @(posedge clk or posedge reset) begin
     if (reset) begin
         ex_mem_pc         <= 32'd0;
@@ -413,8 +411,9 @@ always @(posedge clk or posedge reset) begin
         ex_mem_rs2_fwd    <= 32'd0;
         ex_mem_rd         <= 5'd0;
         ex_mem_ext        <= 32'd0;
+        ex_mem_funct3     <= 3'd2;   // default SW/LW (safe)
     end
-    else begin
+    else if (!pwr_stall_req) begin   // F1 fix: hold on power stall
         ex_mem_pc         <= id_ex_pc;
         ex_mem_regWrite   <= id_ex_regWrite;
         ex_mem_memRead    <= id_ex_memRead;
@@ -426,7 +425,9 @@ always @(posedge clk or posedge reset) begin
         ex_mem_rs2_fwd    <= ex_fwd_rs2;   // forwarded rs2 for stores
         ex_mem_rd         <= id_ex_rd;
         ex_mem_ext        <= id_ex_ext;
+        ex_mem_funct3     <= id_ex_funct3; // C3 fix: propagate width/sign select
     end
+    // else: hold (pwr_stall_req — entire pipeline frozen)
 end
 
 
@@ -434,10 +435,16 @@ end
 // SECTION 4  ?  MEMORY ACCESS  (MEM)
 // ====================================================================
 
+// C3 fix: pass funct3 through EX/MEM register to select byte/hw/word access.
+// The EX/MEM register needs to carry funct3 — we reuse id_ex_funct3 latched
+// into ex_mem_funct3 declared below.
+reg [2:0] ex_mem_funct3;
+
 datamemory DMEM (
     .clk      (clk),
     .memRead  (ex_mem_memRead),
     .memWrite (ex_mem_memWrite),
+    .funct3   (ex_mem_funct3),       // C3 fix: byte/halfword select
     .address  (ex_mem_alu_result),
     .writeData(ex_mem_rs2_fwd),
     .readData (mem_read_data)
@@ -456,7 +463,7 @@ always @(posedge clk or posedge reset) begin
         mem_wb_rd           <= 5'd0;
         mem_wb_ext          <= 32'd0;
     end
-    else begin
+    else if (!pwr_stall_req) begin   // F1 fix: hold on power stall
         mem_wb_pc           <= ex_mem_pc;
         mem_wb_regWrite     <= ex_mem_regWrite;
         mem_wb_memtoReg     <= ex_mem_memtoReg;
@@ -467,6 +474,7 @@ always @(posedge clk or posedge reset) begin
         mem_wb_rd           <= ex_mem_rd;
         mem_wb_ext          <= ex_mem_ext;
     end
+    // else: hold (pwr_stall_req — entire pipeline frozen)
 end
 
 
