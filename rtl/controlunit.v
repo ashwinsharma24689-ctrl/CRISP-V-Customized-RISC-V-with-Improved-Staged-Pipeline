@@ -127,15 +127,16 @@ module alucontrol (
 );
 
 // Encoding identical to alu.v localparams
-localparam ADD = 4'b0000,
-           SUB = 4'b1000,
-           AND = 4'b0111,
-           OR  = 4'b0110,
-           XOR = 4'b0100,
-           SLT = 4'b0010,
-           SLL = 4'b0001,
-           SRL = 4'b0101,
-           SRA = 4'b1101;
+localparam ADD  = 4'b0000,
+           SUB  = 4'b1000,
+           AND  = 4'b0111,
+           OR   = 4'b0110,
+           XOR  = 4'b0100,
+           SLT  = 4'b0010,
+           SLTU = 4'b0011,   // unsigned less-than (C2 fix)
+           SLL  = 4'b0001,
+           SRL  = 4'b0101,
+           SRA  = 4'b1101;
 
 wire [3:0] signal = {funct7[5], funct3};   // direct RISC-V encoding
 
@@ -147,15 +148,16 @@ always @(*) begin
 
         2'b10: begin               // R-type / I-type: use {funct7[5], funct3}
             case (signal)
-                ADD: ALUcontrol = ADD;
-                SUB: ALUcontrol = SUB;
-                AND: ALUcontrol = AND;
-                OR : ALUcontrol = OR;
-                XOR: ALUcontrol = XOR;
-                SLT: ALUcontrol = SLT;
-                SLL: ALUcontrol = SLL;
-                SRL: ALUcontrol = SRL;
-                SRA: ALUcontrol = SRA;
+                ADD:  ALUcontrol = ADD;
+                SUB:  ALUcontrol = SUB;
+                AND:  ALUcontrol = AND;
+                OR :  ALUcontrol = OR;
+                XOR:  ALUcontrol = XOR;
+                SLT:  ALUcontrol = SLT;
+                SLTU: ALUcontrol = SLTU;  // funct7[5]=0, funct3=011
+                SLL:  ALUcontrol = SLL;
+                SRL:  ALUcontrol = SRL;
+                SRA:  ALUcontrol = SRA;
                 default: ALUcontrol = ADD;
             endcase
         end
