@@ -1,22 +1,26 @@
-module instructionmem(rd, pc);
+module instructionmem (
+    input  [31:0] pc,
+    output [31:0] rd
+);
 
-input [31:0] pc;
-output reg [31:0] rd;
-
-localparam N = 256;
-
-// index must hold values 0?255 ? 8 bits
-reg [$clog2(N)-1:0] index;
+localparam N        = 256;
+localparam MEM_FILE = "program.hex";   // path relative to sim working directory
 
 reg [31:0] memory [0:N-1];
 
-always @(*) begin
-    index = pc >> 2;
-
-    if (index < N)
-        rd = memory[index];
-    else
-        rd = 32'd0;   // safe fallback (NOP-like)
+// ?? Initialisation ??????????????????????????????????????????????????
+// Method 1 (simulation + synthesis): load a hex file at elaboration.
+// Each line in program.hex is one 32-bit word in hex, e.g.:
+//   00500093    ? addi x1, x0, 5
+//   00300113    ? addi x2, x0, 3
+// $readmemh fills memory[0], memory[1], ? in order.
+initial begin
+    $readmemh(MEM_FILE, memory);
 end
+
+// ?? Read port (purely combinational) ????????????????????????????????
+wire [7:0] index = pc[9:2];           // word index: pc/4, bounded to 8 bits
+
+assign rd = (pc[31:10] == 22'd0) ? memory[index] : 32'h0000_0013;  // NOP fallback
 
 endmodule

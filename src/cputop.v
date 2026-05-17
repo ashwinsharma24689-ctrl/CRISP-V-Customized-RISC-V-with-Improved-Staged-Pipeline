@@ -118,9 +118,9 @@ immediate_generator IMM (
 
 
 // OPERAND-A MUX  (supports LUI and AUIPC)
-//   alu_src_a = 2'b00  → rs1_data      (all R/I/Load/Store/Branch)
-//   alu_src_a = 2'b01  → 32'h0         (LUI:  0 + imm = imm)
-//   alu_src_a = 2'b10  → pc            (AUIPC: pc + imm)
+//   alu_src_a = 2'b00  ? rs1_data      (all R/I/Load/Store/Branch)
+//   alu_src_a = 2'b01  ? 32'h0         (LUI:  0 + imm = imm)
+//   alu_src_a = 2'b10  ? pc            (AUIPC: pc + imm)
 
 assign alu_in1 = (alu_src_a == 2'b01) ? 32'd0 :
                  (alu_src_a == 2'b10) ? pc     :
@@ -155,12 +155,12 @@ alu ALU (
 
 
 // BRANCH CONDITION  (full RISC-V branch set)
-//   BEQ  (000): A == B         → zero_flag
-//   BNE  (001): A != B         → ~zero_flag
-//   BLT  (100): A <s B         → sign_bit ^ overflow  (signed)
-//   BGE  (101): A >=s B        → ~(sign_bit ^ overflow)
-//   BLTU (110): A <u B         → borrow  (no carry-out from A-B)
-//   BGEU (111): A >=u B        → ~borrow
+//   BEQ  (000): A == B         ? zero_flag
+//   BNE  (001): A != B         ? ~zero_flag
+//   BLT  (100): A <s B         ? sign_bit ^ overflow  (signed)
+//   BGE  (101): A >=s B        ? ~(sign_bit ^ overflow)
+//   BLTU (110): A <u B         ? borrow  (no carry-out from A-B)
+//   BGEU (111): A >=u B        ? ~borrow
 
 always @(*) begin
     case (funct3)
@@ -189,9 +189,9 @@ datamemory DMEM (
 
 
 // WRITE-BACK MUX
-//   JAL / JALR  → pc + 4  (link address)
-//   Load        → read_data
-//   Otherwise   → alu_result
+//   JAL / JALR  ? pc + 4  (link address)
+//   Load        ? read_data
+//   Otherwise   ? alu_result
 //   (LUI / AUIPC already produce the correct alu_result)
 
 assign write_data = (jump || jalr) ? (pc + 32'd4) :

@@ -100,7 +100,7 @@ always @(*) begin
         LUI: begin
             regWrite  = 1'b1;
             aluSrc    = 1'b1;
-            alu_src_a = 2'b01; // operand_a = 0  →  result = 0 + imm = imm
+            alu_src_a = 2'b01; // operand_a = 0  ?  result = 0 + imm = imm
             aluOp     = 2'b00;
             immSel    = U_IMM;
         end
@@ -108,7 +108,7 @@ always @(*) begin
         AUIPC: begin
             regWrite  = 1'b1;
             aluSrc    = 1'b1;
-            alu_src_a = 2'b10; // operand_a = pc  →  result = pc + imm
+            alu_src_a = 2'b10; // operand_a = pc  ?  result = pc + imm
             aluOp     = 2'b00;
             immSel    = U_IMM;
         end
