@@ -43,11 +43,8 @@ vlog test_bench_pipeline.v
 vlog test_bench_pipeline_hazzard.v
 vlog test_bench_branch_jump.v
 vlog test_bench_cpupipeline.v
-# Note: test_bench_hazard_unit.v is a duplicate of test_bench_data_mem.v
-#       (same module name tb_data_memory) -- skip to avoid conflict.
-# vlog test_bench_hazard_unit.v
-# Note: test_bench_controlunit.v is empty -- skip.
-# vlog test_bench_controlunit.v
+vlog test_bench_hazard_unit.v     # T1 fix: was incorrectly skipped (module names differ)
+vlog test_bench_controlunit.v     # T2 fix: was incorrectly skipped (not empty on disk)
 
 # ----------------------------------------------------------------
 # 3.  Helper proc: run one testbench and print a separator
@@ -71,6 +68,8 @@ run_tb tb_pipeline
 run_tb tb_pipeline_hazards
 run_tb tb_branch_jump
 run_tb tb_cpu_pipeline
+run_tb tb_hazard_unit        ;# T1 fix
+run_tb tb_control_unit       ;# T2 fix
 
 puts "\n================================================================"
 puts "  ALL TESTBENCHES COMPLETE"
