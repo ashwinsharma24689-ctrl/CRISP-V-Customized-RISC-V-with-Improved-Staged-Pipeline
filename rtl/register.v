@@ -14,7 +14,7 @@ module reg_array (
 );
 
     reg [31:0] register_array [0:31];
-    reg [4:0]  i;  // bounded width, replaces integer
+    integer i;  // loop counter for reset
 
     // Combinational read ports ? x0 hardwired to zero
     assign rs1 = (sr1 == 5'd0) ? 32'd0 : register_array[sr1];

@@ -57,7 +57,7 @@ always @(*) begin
         Itype: begin          // ADDI, SLTI, ORI, ANDI, XORI, SLLI, SRLI, SRAI
             regWrite  = 1'b1;
             aluSrc    = 1'b1;
-            aluOp     = 2'b10;
+            aluOp     = 2'b11; // I-type: ignore funct7 except for shifts
             immSel    = I_IMM;
         end
 
@@ -146,7 +146,7 @@ always @(*) begin
 
         2'b01: ALUcontrol = SUB;   // branch: compare via subtraction
 
-        2'b10: begin               // R-type / I-type: use {funct7[5], funct3}
+        2'b10: begin               // R-type: use {funct7[5], funct3}
             case (signal)
                 ADD:  ALUcontrol = ADD;
                 SUB:  ALUcontrol = SUB;
@@ -158,6 +158,20 @@ always @(*) begin
                 SLL:  ALUcontrol = SLL;
                 SRL:  ALUcontrol = SRL;
                 SRA:  ALUcontrol = SRA;
+                default: ALUcontrol = ADD;
+            endcase
+        end
+
+        2'b11: begin               // I-type: ignore funct7 except for shifts
+            case (funct3)
+                3'b000: ALUcontrol = ADD;  // ADDI
+                3'b010: ALUcontrol = SLT;  // SLTI
+                3'b011: ALUcontrol = SLTU; // SLTIU
+                3'b100: ALUcontrol = XOR;  // XORI
+                3'b110: ALUcontrol = OR;   // ORI
+                3'b111: ALUcontrol = AND;  // ANDI
+                3'b001: ALUcontrol = SLL;  // SLLI
+                3'b101: ALUcontrol = funct7[5] ? SRA : SRL; // SRAI/SRLI
                 default: ALUcontrol = ADD;
             endcase
         end
