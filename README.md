@@ -1,4 +1,4 @@
-# CRISP-V — Customized RISC-V with Improved Staged Pipeline
+# CRISP-V : Customized RISC-V with Improved Staged Pipeline
 
 A fully functional **32-bit 5-stage pipelined RISC-V processor** implemented in Verilog, supporting the complete **RV32I base integer instruction set**.
 
