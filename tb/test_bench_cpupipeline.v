@@ -47,6 +47,7 @@ cpu_pipeline DUT (
 );
 
 integer pass_count, fail_count, i;
+initial clk=0;
 always #5 clk = ~clk;
 
 localparam NOP = 32'h0000_0013;
@@ -73,14 +74,18 @@ task chk_mem;
     input [200:0] name;
     input [7:0]   word_idx;
     input [31:0]  exp;
+    integer base;
+    reg [31:0] got;
     begin
-        if (DUT.DMEM.memory[word_idx]===exp) begin
+        base = word_idx << 2;
+        got = {DUT.DMEM.memory[base+3], DUT.DMEM.memory[base+2],
+               DUT.DMEM.memory[base+1], DUT.DMEM.memory[base]};
+        if (got===exp) begin
             $display("PASS [%0s]  mem[%0d]=0x%08h", name,word_idx,exp);
             pass_count=pass_count+1;
         end else begin
             $display("FAIL [%0s]  mem[%0d] got=0x%08h exp=0x%08h",
-                     name,word_idx,
-                     DUT.DMEM.memory[word_idx],exp);
+                     name,word_idx,got,exp);
             fail_count=fail_count+1;
         end
     end
@@ -257,8 +262,8 @@ task prog2_factorial;
         DUT.IMEM.memory[7]  = blt_f(5'd3,5'd6,13'h1FF8); // if j<i goto inner
         DUT.IMEM.memory[8]  = addi_f(5'd1,5'd2,12'd0);   // result=partial
         DUT.IMEM.memory[9]  = addi_f(5'd6,5'd6,12'd1);   // i++
-        // bge x7,x6,-24  offset=-24 = 13'h1FE8
-        DUT.IMEM.memory[10] = bge_f(5'd7,5'd6,13'h1FE8); // if limit>=i goto outer
+        // bge x7,x6,-28  offset=-28 = 13'h1FE4
+        DUT.IMEM.memory[10] = bge_f(5'd7,5'd6,13'h1FE4); // if limit>=i goto outer
         DUT.IMEM.memory[11] = sw_f(5'd0,5'd1,12'd0);     // store result
     end
 endtask
@@ -290,8 +295,8 @@ task prog3_call_return;
         DUT.IMEM.memory[2] = jal_f(5'd1,21'd12);
         // word 3: after_call ? addi x13, x10, 0  (return here: pc=12)
         DUT.IMEM.memory[3] = addi_f(5'd13,5'd10,12'd0);
-        // word 4: nop (gap)
-        DUT.IMEM.memory[4] = NOP;
+        // word 4: jump over add_func after return
+        DUT.IMEM.memory[4] = jal_f(5'd0,21'd12); // skip words 5-6
         // word 5: add_func
         DUT.IMEM.memory[5] = add_f(5'd10,5'd10,5'd11);  // a0 = a0+a1
         // word 6: jalr x0, x1, 0  (return to ra)
@@ -339,7 +344,7 @@ task prog4_bitwise;
     begin
         base=0;
         for (i=0;i<64;i=i+1) DUT.IMEM.memory[i]=NOP;
-        for (i=0;i<16;i=i+1) DUT.DMEM.memory[i]=32'd0;
+        for (i=0;i<32;i=i+1) DUT.DMEM.memory[i]=8'd0;
 
         // Load x1 = 0xF0F0F0F0
         // lui x1, 0xF0F0F
@@ -385,10 +390,13 @@ task prog4_bitwise;
 endtask
 
 initial begin
+    $dumpfile("wave.vcd");           // ADD HERE
+    $dumpvars(0, tb_cpu_pipeline);   // ADD HERE - correct module name
+
     pass_count=0; fail_count=0;
-    clk=0; reset=1;
-    for (i=0;i<256;i=i+1) DUT.IMEM.memory[i]=NOP;
-    for (i=0;i<256;i=i+1) DUT.DMEM.memory[i]=32'd0;
+    reset=1;
+    for (i=0;i<64;i=i+1) DUT.IMEM.memory[i]=NOP;
+    for (i=0;i<1024;i=i+1) DUT.DMEM.memory[i]=8'd0;
 
     // ================================================================
     // PROGRAM 1: Fibonacci(8) = 21
@@ -403,7 +411,7 @@ initial begin
     // PROGRAM 2: Factorial(5) = 120
     // ================================================================
     $display("\n=== PROGRAM 2: Factorial(5) ===");
-    for (i=0;i<256;i=i+1) DUT.DMEM.memory[i]=32'd0;
+    for (i=0;i<1024;i=i+1) DUT.DMEM.memory[i]=8'd0;
     prog2_factorial;
     run_cycles(200);
     chk_reg("fact5_reg",   5'd1, 32'd120);

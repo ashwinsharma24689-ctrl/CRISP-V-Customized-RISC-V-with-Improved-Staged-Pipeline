@@ -62,7 +62,13 @@ cpu_pipeline DUT (
 );
 
 integer pass_count, fail_count, i;
+integer cycle_count;
+initial  clk=0;
 always #5 clk = ~clk;
+
+always @(posedge clk) begin
+    cycle_count = cycle_count + 1;
+end
 
 // ?? Sentinel values ??????????????????????????????????????????????????
 localparam GOOD = 32'd42;
@@ -203,8 +209,8 @@ task run_program;
 endtask
 
 initial begin
-    pass_count=0; fail_count=0;
-    clk=0; reset=1;
+    pass_count=0; fail_count=0; cycle_count=0;
+    reset=1;
     for (i=0;i<256;i=i+1) DUT.IMEM.memory[i]=NOP;
 
     $display("=== BRANCH & JUMP TESTBENCH ===");
@@ -235,9 +241,10 @@ initial begin
     DUT.IMEM.memory[32] = addi(5'd1,5'd0,12'd5);
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'd6);
     DUT.IMEM.memory[34] = beq_enc(5'd1,5'd2,13'd8);
-    DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);  // fall-through = GOOD
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD); // target = BAD
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);          // fall-through = GOOD
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);            // skip BAD
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);         // target = BAD
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("beq_not_taken", 5'd3, GOOD);
 
@@ -262,8 +269,9 @@ initial begin
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'd4);
     DUT.IMEM.memory[34] = bne_enc(5'd1,5'd2,13'd8);
     DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD);
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("bne_not_taken", 5'd3, GOOD);
 
@@ -288,8 +296,9 @@ initial begin
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'd3);
     DUT.IMEM.memory[34] = blt_enc(5'd1,5'd2,13'd8);
     DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD);
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("blt_not_taken", 5'd3, GOOD);
 
@@ -314,8 +323,9 @@ initial begin
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'd1);
     DUT.IMEM.memory[34] = bge_enc(5'd1,5'd2,13'd8);
     DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD);
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("bge_not_taken", 5'd3, GOOD);
 
@@ -340,8 +350,9 @@ initial begin
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'd1);
     DUT.IMEM.memory[34] = bltu_enc(5'd1,5'd2,13'd8);
     DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD);
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("bltu_not_taken", 5'd3, GOOD);
 
@@ -366,8 +377,9 @@ initial begin
     DUT.IMEM.memory[33] = addi(5'd2,5'd0,12'hFFF);
     DUT.IMEM.memory[34] = bgeu_enc(5'd1,5'd2,13'd8);
     DUT.IMEM.memory[35] = addi(5'd3,5'd0,12'd42);
-    DUT.IMEM.memory[36] = addi(5'd3,5'd0,12'hBAD);
-    for (i=37;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
+    DUT.IMEM.memory[36] = jal_enc(5'd0, 21'd8);
+    DUT.IMEM.memory[37] = addi(5'd3,5'd0,12'hBAD);
+    for (i=38;i<48;i=i+1) DUT.IMEM.memory[i]=NOP;
     run_program(32, 20);
     chk("bgeu_not_taken", 5'd3, GOOD);
 
@@ -414,6 +426,13 @@ initial begin
              pass_count, fail_count);
     if (fail_count==0) $display("ALL TESTS PASSED");
     else               $display("*** FAILURES ? review above ***");
+    $finish;
+end
+
+// Safety watchdog: end simulation if it stalls unexpectedly.
+initial begin
+    #100000;
+    $display("*** TIMEOUT: no finish after %0d cycles ***", cycle_count);
     $finish;
 end
 

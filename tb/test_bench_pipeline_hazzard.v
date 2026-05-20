@@ -109,11 +109,11 @@ initial begin
     //  6: addi x7,  x0, 20   0x01400393
     //  7: sw   x7,  0(x0)    0x00702023
     //  8: lw   x8,  0(x0)    0x00002403
-    //  9: addi x9,  x8,  1   0x00840493   ? load-use stall on x8
+    //  9: addi x9,  x8,  1   0x00140493   ? load-use stall on x8
     DUT.IMEM.memory[6] = 32'h01400393;  // addi x7, x0, 20
     DUT.IMEM.memory[7] = 32'h00702023;  // sw   x7, 0(x0)
     DUT.IMEM.memory[8] = 32'h00002403;  // lw   x8, 0(x0)
-    DUT.IMEM.memory[9] = 32'h00840493;  // addi x9, x8, 1
+    DUT.IMEM.memory[9] = 32'h00140493;  // addi x9, x8, 1
 
     // ================================================================
     // SCENARIO 4: Taken branch flush  (instructions 10-14)

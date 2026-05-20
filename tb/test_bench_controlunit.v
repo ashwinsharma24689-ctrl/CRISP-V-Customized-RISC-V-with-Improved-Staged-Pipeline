@@ -3,9 +3,9 @@
 //
 // Coverage
 // ????????
-// maincontrol : all 9 opcodes × every output signal
+// maincontrol : all 9 opcodes ï¿½ every output signal
 // alucontrol  : aluOp=00 (forced ADD), aluOp=01 (forced SUB),
-//               aluOp=10 × every {funct7[5],funct3} R/I combination
+//               aluOp=10 ï¿½ every {funct7[5],funct3} R/I combination
 //
 // Design philosophy
 // ?????????????????
@@ -129,9 +129,9 @@ initial begin
     chk_main("R_type",  1, 0, 0, 0,  0,    2'b00,2'b10,3'bxxx,0,  0,   0);
 
     $display("-- maincontrol: I-type (ALU immediate)");
-    // I-type: regWrite=1, aluSrc=1 (use imm), aluOp=10, I_IMM
+    // I-type: regWrite=1, aluSrc=1 (use imm), aluOp=11, I_IMM
     opcode = OP_I;
-    chk_main("I_type",  1, 0, 0, 0,  1,    2'b00,2'b10,I_IMM, 0,  0,   0);
+    chk_main("I_type",  1, 0, 0, 0,  1,    2'b00,2'b11,I_IMM, 0,  0,   0);
 
     $display("-- maincontrol: Load");
     // Load: regWrite=1, memRead=1, memtoReg=1, aluSrc=1, aluOp=00, I_IMM
