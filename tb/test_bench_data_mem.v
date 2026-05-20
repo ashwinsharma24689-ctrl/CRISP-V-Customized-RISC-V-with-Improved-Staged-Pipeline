@@ -4,7 +4,7 @@
 // The module under test:
 //   - Synchronous write  (posedge clk, memWrite=1)
 //   - Combinational read (memRead=1, address < N*4)
-//   - Word-indexed: index = address >> 2
+//   - Byte-addressed (little-endian); word access uses byte address
 //   - Returns 32'd0 for out-of-bounds or memRead=0 address
 //
 // Test cases  (one per distinct logical path)
@@ -14,7 +14,7 @@
 //     same cycle as write, NEW value on next cycle
 //  3. memWrite=0 guard: data must not change
 //  4. memRead=0: readData must be 32'd0 regardless of address content
-//  5. Word addressing: byte addresses 0,1,2,3 all map to index 0
+//  5. Aligned word addressing (4-byte aligned LW/SW)
 //  6. Multiple independent addresses (no aliasing between indices)
 //  7. Out-of-bounds address (>= N*4 = 1024): readData = 32'd0
 //  8. Boundary address: last valid word (address = (N-1)*4 = 1020)
@@ -26,6 +26,7 @@ module tb_data_memory;
 reg         clk, memRead, memWrite;
 reg  [31:0] address, writeData;
 wire [31:0] readData;
+wire [2:0] funct3;
 
 datamemory DUT (
     .clk      (clk),
@@ -33,11 +34,13 @@ datamemory DUT (
     .memWrite (memWrite),
     .address  (address),
     .writeData(writeData),
-    .readData (readData)
+    .readData (readData),
+    .funct3(funct3)
 );
 
 integer pass_count, fail_count, i;
 
+initial clk=0; 
 always #5 clk = ~clk;
 
 task check;
@@ -77,12 +80,12 @@ endtask
 
 initial begin
     pass_count=0; fail_count=0;
-    clk=0; memRead=0; memWrite=0; address=0; writeData=0;
+    memRead=0; memWrite=0; address=0; writeData=0;
     $display("=== DATA MEMORY TESTBENCH ===");
 
     // Initialise all memory to 0 so tests start from a known state
-    for (i=0; i<256; i=i+1)
-        DUT.memory[i] = 32'd0;
+    for (i=0; i<1024; i=i+1)
+        DUT.memory[i] = 8'd0;
 
     // ----------------------------------------------------------------
     // TEST 1: Basic write then read-back
@@ -99,7 +102,7 @@ initial begin
     // ----------------------------------------------------------------
     $display("-- sync-write / comb-read timing");
     // Set up a fresh address with known old value = 0
-    for (i=0; i<256; i=i+1) DUT.memory[i] = 32'd0;
+    for (i=0; i<1024; i=i+1) DUT.memory[i] = 8'd0;
 
     address=32'd8; writeData=32'hCAFE_CAFE; memWrite=1'b1; memRead=1'b1;
     // Sample BEFORE posedge ? must see old value (0)
@@ -130,15 +133,12 @@ initial begin
     #1; check("memread_0_gate", 32'd0);
 
     // ----------------------------------------------------------------
-    // TEST 5: Word addressing ? byte addresses 0,1,2,3 all ? index 0
+    // TEST 5: Aligned word addressing (LW uses byte address; unaligned LW not tested)
     // ----------------------------------------------------------------
-    $display("-- word addressing: byte offsets within same word");
+    $display("-- aligned word addressing");
     do_write(32'd0, 32'h1234_5678);
-    do_read_check(32'd0, "word_addr_byte0", 32'h1234_5678);
-    do_read_check(32'd1, "word_addr_byte1", 32'h1234_5678);
-    do_read_check(32'd2, "word_addr_byte2", 32'h1234_5678);
-    do_read_check(32'd3, "word_addr_byte3", 32'h1234_5678);
-    // Address 4 must NOT alias to index 0
+    do_read_check(32'd0, "word_addr_aligned0", 32'h1234_5678);
+    // Address 4 must NOT alias to address 0
     do_write(32'd4, 32'hABCD_EF01);
     do_read_check(32'd4, "word_addr_next",  32'hABCD_EF01);
     do_read_check(32'd0, "word_addr_no_alias", 32'h1234_5678);
@@ -187,5 +187,5 @@ initial begin
     else               $display("*** FAILURES ? review above ***");
     $finish;
 end
-
+assign funct3=3'b010;
 endmodule
